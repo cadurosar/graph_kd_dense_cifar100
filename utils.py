@@ -204,10 +204,14 @@ def load_data(batch_size=128,is_cifar10=True,batch_test=50):
     trainset = dataset(root='~/data', train=True, download=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
 
+    clean_trainset = dataset(root='~/data', train=True, download=True, transform=transform_test)
+    clean_trainloader = torch.utils.data.DataLoader(clean_trainset, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True)
+
+
     testset = dataset(root='~/data', train=False, download=True, transform=transform_test)
     testloader = torch.utils.data.DataLoader(testset, batch_size=batch_test, shuffle=False, num_workers=8, pin_memory=True)
 
-    return trainloader, testloader
+    return trainloader, testloader, clean_trainloader
 
 def to_one_hot(inp,num_classes):
     y_onehot = torch.cuda.FloatTensor(inp.size(0), num_classes)
@@ -256,6 +260,7 @@ def train(net,trainloader,scheduler,device,optimizer,teacher=None,lambda_hkd=0,l
     correct = 0
     total = 0
     criterion = BatchMeanCrossEntropyWithLogSoftmax()
+    lr = optimizer.param_groups[0]['lr']
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         inputs, targets = inputs.to(device), targets.to(device)
         targets2 = to_one_hot(targets, classes)
@@ -264,8 +269,10 @@ def train(net,trainloader,scheduler,device,optimizer,teacher=None,lambda_hkd=0,l
         targets = targets2.argmax(dim=1)
         optimizer.zero_grad()
         outputs, layers = net(inputs)
-        loss = criterion(F.log_softmax(outputs,dim=-1),targets2)        
+        loss = 0
         if teacher:
+            loss = criterion(F.log_softmax(outputs,dim=-1),targets2)        
+            teacher.eval()
             with torch.no_grad():
                 teacher_output, teacher_layers = teacher(inputs)
             if lambda_hkd > 0:
@@ -292,7 +299,10 @@ def train(net,trainloader,scheduler,device,optimizer,teacher=None,lambda_hkd=0,l
                 loss += loss_rkd if pool3_only else loss_rkd/3
             elif lambda_gkd > 0:
                 loss_gkd = do_gkd(pool3_only, layers, teacher_layers, k, power, intra_only, lambda_gkd, intra_class, inter_only, inter_class)
-                loss += loss_gkd if pool3_only else loss_gkd/3
+#                loss += loss_gkd if pool3_only else loss_gkd/3
+                loss += loss_gkd
+        else:
+            loss = criterion(F.log_softmax(outputs,dim=-1),targets2)        
         loss.backward()
         optimizer.step()
         train_loss += loss.item()
@@ -300,9 +310,13 @@ def train(net,trainloader,scheduler,device,optimizer,teacher=None,lambda_hkd=0,l
         total += targets.size(0)
         correct += predicted.eq(targets).sum().item()
 
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
-    scheduler.step()
+        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d) | LR %f'
+            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total, lr))
+    train_loss = train_loss/len(trainloader)
+    if teacher:
+        scheduler.step()
+    else:
+        scheduler.step()
 
 def do_gkd(pool3_only, layers, teacher_layers, k, power, intra_only, lambda_gkd, intra_class, inter_only, inter_class):
     loss_gkd = 0 
@@ -321,15 +335,17 @@ def do_gkd(pool3_only, layers, teacher_layers, k, power, intra_only, lambda_gkd,
             adj_teacher_p = torch.matmul(adj_teacher_p,adj_teacher)
             adj_student_p = torch.matmul(adj_student_p,adj_student)
         loss_gkd += lambda_gkd*F.mse_loss(adj_teacher_p, adj_student_p, reduction='none').sum()
-    return loss_gkd
+#        loss_gkd += lambda_gkd*torch.nn.MSELoss(reduction='none')(student_layer, teacher_layer).mean()
+    return loss_gkd#/len(layers)
 
-def test(net,testloader, device,save_name="teacher",show="accuracy"):
+def test(net,testloader, device,save_name="no",show="error"):
     net.eval()
     test_loss = 0
     correct = 0
     total = 0
     criterion = nn.CrossEntropyLoss()
-
+    all_predicted = list()
+    all_targets = list()
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
             inputs, targets = inputs.to(device), targets.to(device)
@@ -338,6 +354,8 @@ def test(net,testloader, device,save_name="teacher",show="accuracy"):
 
             test_loss += loss.item()
             _, predicted = outputs.max(1)
+            all_predicted.append(predicted.cpu())
+            all_targets.append(targets.cpu())
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
 
@@ -353,3 +371,4 @@ def test(net,testloader, device,save_name="teacher",show="accuracy"):
         torch.save(state, './checkpoint/{}.pth'.format(save_name))
     if show=="error":
         print("Test error: {:.2f}".format(100 - 100.*correct/total))
+    return torch.cat(all_predicted), torch.cat(all_targets)

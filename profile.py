@@ -3,7 +3,10 @@ import argparse
 import torch
 import torch.nn as nn
 import utils
-
+import os
+import models
+import models.densenet
+import models.nearmobile
 
 def count_conv2d(m, x, y):
     x = x[0] # remove tuple
@@ -16,6 +19,7 @@ def count_conv2d(m, x, y):
     kernel_mul = sh * sw * fin
     kernel_add = sh * sw * fin - 1
     bias_ops = 1 if m.bias is not None else 0
+    kernel_mul = kernel_mul/2 # FP16
     ops = kernel_mul + kernel_add + bias_ops
     
     # total ops
@@ -39,9 +43,31 @@ def count_bn2d(m, x, y):
 #    print("Batch norm: F_in={} P={}, params={}, operations={}".format(x.size(1),x.size()[2:].numel(),int(m.total_params.item()),int(total_ops)))
 
    
+def count_relu(m, x, y):
+    x = x[0]
+
+    nelements = x.numel()
+    total_ops = nelements
+
+    m.total_ops += torch.Tensor([int(total_ops)])
+#    print("ReLU: F_in={} P={}, params={}, operations={}".format(x.size(1),x.size()[2:].numel(),0,int(total_ops)))
+
+    
+
+def count_avgpool(m, x, y):
+    x = x[0]
+    total_add = torch.prod(torch.Tensor([m.kernel_size])) - 1
+    total_div = 1
+    kernel_ops = total_add + total_div
+    num_elements = y.numel()
+    total_ops = kernel_ops * num_elements
+
+    m.total_ops += torch.Tensor([int(total_ops)])
+#    print("AvgPool: S={}, F_in={}, P={}, params={}, operations={}".format(m.kernel_size,x.size(1),x.size()[2:].numel(),0,int(total_ops)))
+
 def count_linear(m, x, y):
     # per output element
-    total_mul = m.in_features
+    total_mul = m.in_features/2
     total_add = m.in_features - 1
     num_elements = y.numel()
     total_ops = (total_mul + total_add) * num_elements
@@ -58,12 +84,16 @@ def profile(model, input_size, custom_ops = {}):
         m.register_buffer('total_params', torch.zeros(1))
 
         for p in m.parameters():
-            m.total_params += torch.Tensor([p.numel()])
+            m.total_params += torch.Tensor([p.numel()]) #/ 2 # Division Free quantification
 
         if isinstance(m, nn.Conv2d):    
             m.register_forward_hook(count_conv2d)
-        elif isinstance(m, nn.BatchNorm2d):
+        elif isinstance(m, nn.BatchNorm2d) or isinstance(m,nn.GroupNorm):
             m.register_forward_hook(count_bn2d)
+        elif isinstance(m, nn.ReLU):
+            m.register_forward_hook(count_relu)
+        elif isinstance(m, (nn.AvgPool2d)):
+            m.register_forward_hook(count_avgpool)
         elif isinstance(m, nn.Linear):
             m.register_forward_hook(count_linear)
         else:
@@ -86,9 +116,9 @@ def profile(model, input_size, custom_ops = {}):
     return total_ops, total_params
 
 def main():
-    file = "checkpoint/GKD_28-10_teaches_28-1_0_0_p1_25_pool.pth"
-#    file = "checkpoint/WideResNet28-1.pth"
-    model = torch.load(file)["net"].module.cpu()
+
+#    model = torch.load(file)["net"].module.cpu()
+    model = models.densenet.densenet_cifar(n=16,growth_rate=96,bottle_size=4,num_classes=10)
     flops, params = profile(model, (1,3,32,32))
 
     flops, params = flops.item(), params.item()
@@ -96,14 +126,11 @@ def main():
     wideresnet_flops = 10490553344
     score_flops = flops/wideresnet_flops
     score_params = params/wideresnet_params
-    score = (score_flops + score_params)/2
+    score = (score_flops + score_params)
     print("Flops: {}, Params: {}".format(flops,params))
     print("Score flops: {} Score Params: {}".format(score_flops,score_params))
     print("Final score: {}".format(score))
 
-    model = torch.load(file)["net"].module
-    trainloader, testloader = utils.load_data(128)
-    utils.test(model,testloader, "cuda", "no",show="error")
 
 if __name__ == "__main__":
     main()
