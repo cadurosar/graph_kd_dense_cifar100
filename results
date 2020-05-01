@@ -1,0 +1,47 @@
+Files already downloaded and verified
+Files already downloaded and verified
+Files already downloaded and verified
+Densenet100-10-4_0.pth
+Test error: 5.33
+Densenet100-11-4_0.pth
+Test error: 4.94
+Densenet100-3-4_0.pth
+Test error: 8.99
+Densenet100-4-4_0.pth
+Test error: 7.66
+Densenet100-5-4_0.pth
+Test error: 6.38
+Densenet100-6-4_0.pth
+Test error: 6.16
+Densenet100-7-4_0.pth
+Test error: 5.69
+Densenet100-8-4_0.pth
+Test error: 5.46
+Densenet100-9-4_0.pth
+Test error: 5.05
+FinetuneDensenet100-10-4_0.pth
+Test error: 5.47
+FinetuneDensenet100-11-4_0.pth
+Test error: 5.14
+FinetuneDensenet100-12-4.0_3.pth
+Test error: 4.91
+FinetuneDensenet100-3-4_0.pth
+Test error: 8.92
+FinetuneDensenet100-4-4_0.pth
+Test error: 7.40
+FinetuneDensenet100-5-4_0.pth
+Test error: 6.41
+FinetuneDensenet100-6-2.0_3.pth
+Test error: 7.22
+FinetuneDensenet100-6-4_0.pth
+Test error: 6.00
+FinetuneDensenet100-7-4_0.pth
+Test error: 5.39
+FinetuneDensenet100-8-4_0.pth
+Test error: 5.22
+FinetuneDensenet100-9-4_0.pth
+Test error: 5.11
+L2Loss_100-11-4.0_teaches_100-10-4.0_16.0_4.0_25.0_1_128_False_False_False_0.pth
+Test error: 7.52
+L2Loss_100-12-4.0_teaches_100-11-4.0_16.0_4.0_25.0_1_128_False_False_False_0.pth
+Test error: 4.65
