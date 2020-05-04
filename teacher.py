@@ -23,7 +23,7 @@ def main():
     save = "Densenet{}-{}-{}_{}".format(args.depth,args.width,args.mult,args.seed)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     trainloader, testloader, clean_trainloader = load_data(64)
-    net = models.densenet.densenet_cifar(n=args.depth,growth_rate=args.width,bottle_size=args.mult,num_classes=10)
+    net = models.densenet.densenet_cifar(n=args.depth,growth_rate=args.width,bottle_size=args.mult,num_classes=100)
     net = net.to(device)
     if device == 'cuda':
         net = torch.nn.DataParallel(net)

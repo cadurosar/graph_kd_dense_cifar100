@@ -185,7 +185,7 @@ def format_time(seconds):
         f = '0ms'
     return f
 
-def load_data(batch_size=128,is_cifar10=True,batch_test=50):
+def load_data(batch_size=128,is_cifar10=False,batch_test=50):
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
